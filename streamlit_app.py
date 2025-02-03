@@ -10,6 +10,7 @@ from bidi.algorithm import get_display
 from matplotlib.colors import LinearSegmentedColormap
 from persiantools.jdatetime import JalaliDate
 from read_gsheet import fetch_gsheet_data
+from fetch_metabase_data import fetch_metabase_data
 
 import warnings
 
@@ -124,8 +125,7 @@ reasons_display_dict = {
     'Payment Problems': 'main_payment_problem',
 }
 
-overall_integrated_data = pd.read_csv('integrated_data.csv')
-
+# overall_integrated_data = pd.read_csv('integrated_data.csv')
 
 def create_pivot_table(uploaded_data, start_date_input, end_date_input, the_type):
     nps_data = uploaded_data
@@ -277,14 +277,14 @@ def load_data(path: str):
 def convert_jalali_to_gregorian(jalali_str):
     if " - " in jalali_str:
         date_part, _ = jalali_str.split(" - ")
-        year, month, day = map(int, date_part.split("/"))
-        gregorian_date = jdatetime.date(year, month, day).togregorian()
-        return pd.Timestamp(gregorian_date)
+        # year, month, day = map(int, date_part.split("/"))
+        # gregorian_date = jdatetime.date(year, month, day).togregorian()
+        # return pd.Timestamp(gregorian_date)
     else:
         date_part = jalali_str
-        year, month, day = map(int, date_part.split("/"))
-        gregorian_date = jdatetime.date(year, month, day).togregorian()
-        return pd.Timestamp(gregorian_date)
+    year, month, day = map(int, date_part.split("/"))
+    gregorian_date = jdatetime.date(year, month, day).togregorian()
+    return pd.Timestamp(gregorian_date).tz_localize(None)
 
 
 def convert_gregorian_to_jalali(gregorian_date):
@@ -910,62 +910,62 @@ def plot_cancelled_orders(integrated_data):
     st.pyplot(fig)
 
 
-def stacked_visualize_reasons_business(integrated_data, insurance_type):
-    if insurance_type == 'Thirdparty':
-        time_categories = ['less_than_12_hours_thirdparty', 'less_than_24_hours_thirdparty',
-                           'less_than_48_hours_thirdparty',
-                           'less_than_120_hours_thirdparty', 'more_than_120_hours_thirdparty']
-    else:
-        time_categories = ['less_than_12_hours_carbody', 'less_than_24_hours_carbody',
-                           'less_than_48_hours_carbody',
-                           'less_than_120_hours_carbody', 'more_than_120_hours_carbody']
-
-    required_columns = ['jalali_period'] + time_categories
-    integrated_data = get_jalali_period_business(integrated_data)
-    integrated_data = integrated_data[required_columns]
-
-    weekly_data = integrated_data.groupby('jalali_period')[time_categories].sum()
-
-    weekly_data_percent = weekly_data.div(weekly_data.sum(axis=1), axis=0) * 100
-
-    # reshaped_columns = [get_display(arabic_reshaper.reshape(col)) for col in time_categories]
-
-    fig, ax1 = plt.subplots(figsize=(12, 6))
-
-    weekly_data_percent.plot(kind='bar', stacked=True, ax=ax1,
-                             color=['dodgerblue', 'skyblue', 'honeydew', 'lemonchiffon', 'lightsalmon'],
-                             edgecolor='none')
-
-    ax1.set_xlabel(' ')
-    ax1.set_ylabel('Percentage')
-    ax1.set_title(' ')
-    labels = ['Less Than 12 Hours', 'Less Than 24 Hours', 'Less Than 48 Hours',
-              'Less Than 120 Hours', 'More Than 120 Hours']
-    ax1.legend(labels, prop=font_manager.FontProperties(fname='Vazir-Thin.ttf'), edgecolor='none',
-               loc='upper center',
-               bbox_to_anchor=(0.5, 1.15), ncol=len(labels), frameon=False)
-
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
-    ax1.grid(False)
-
-    ax2 = ax1.twinx()
-
-    weekly_sum = weekly_data.sum(axis=1)
-    weekly_data.index = weekly_data.index.map(str)
-
-    ax2.plot(weekly_data.index, weekly_sum, color='black', marker='o', linewidth=4)
-    ax2.set_ylabel('Total Count')
-    ax2.spines['top'].set_visible(False)
-    ax2.legend(loc="upper left", frameon=False)
-
-    plt.subplots_adjust(right=1.5, bottom=0.2)
-    ax1.xaxis.set_ticks_position('bottom')
-    ax1.yaxis.set_ticks_position('left')
-    ax2.yaxis.set_ticks_position('right')
-
-    plt.tight_layout()
-    st.pyplot(fig)
+# def stacked_visualize_reasons_business(integrated_data, insurance_type):
+#     if insurance_type == 'Thirdparty':
+#         time_categories = ['less_than_12_hours_thirdparty', 'less_than_24_hours_thirdparty',
+#                            'less_than_48_hours_thirdparty',
+#                            'less_than_120_hours_thirdparty', 'more_than_120_hours_thirdparty']
+#     else:
+#         time_categories = ['less_than_12_hours_carbody', 'less_than_24_hours_carbody',
+#                            'less_than_48_hours_carbody',
+#                            'less_than_120_hours_carbody', 'more_than_120_hours_carbody']
+#
+#     required_columns = ['jalali_period'] + time_categories
+#     integrated_data = get_jalali_period_business(integrated_data)
+#     integrated_data = integrated_data[required_columns]
+#
+#     weekly_data = integrated_data.groupby('jalali_period')[time_categories].sum()
+#
+#     weekly_data_percent = weekly_data.div(weekly_data.sum(axis=1), axis=0) * 100
+#
+#     # reshaped_columns = [get_display(arabic_reshaper.reshape(col)) for col in time_categories]
+#
+#     fig, ax1 = plt.subplots(figsize=(12, 6))
+#
+#     weekly_data_percent.plot(kind='bar', stacked=True, ax=ax1,
+#                              color=['dodgerblue', 'skyblue', 'honeydew', 'lemonchiffon', 'lightsalmon'],
+#                              edgecolor='none')
+#
+#     ax1.set_xlabel(' ')
+#     ax1.set_ylabel('Percentage')
+#     ax1.set_title(' ')
+#     labels = ['Less Than 12 Hours', 'Less Than 24 Hours', 'Less Than 48 Hours',
+#               'Less Than 120 Hours', 'More Than 120 Hours']
+#     ax1.legend(labels, prop=font_manager.FontProperties(fname='Vazir-Thin.ttf'), edgecolor='none',
+#                loc='upper center',
+#                bbox_to_anchor=(0.5, 1.15), ncol=len(labels), frameon=False)
+#
+#     ax1.spines['top'].set_visible(False)
+#     ax1.spines['right'].set_visible(False)
+#     ax1.grid(False)
+#
+#     ax2 = ax1.twinx()
+#
+#     weekly_sum = weekly_data.sum(axis=1)
+#     weekly_data.index = weekly_data.index.map(str)
+#
+#     ax2.plot(weekly_data.index, weekly_sum, color='black', marker='o', linewidth=4)
+#     ax2.set_ylabel('Total Count')
+#     ax2.spines['top'].set_visible(False)
+#     ax2.legend(loc="upper left", frameon=False)
+#
+#     plt.subplots_adjust(right=1.5, bottom=0.2)
+#     ax1.xaxis.set_ticks_position('bottom')
+#     ax1.yaxis.set_ticks_position('left')
+#     ax2.yaxis.set_ticks_position('right')
+#
+#     plt.tight_layout()
+#     st.pyplot(fig)
 
 
 def plot_login_success_rate(login_data):
@@ -1023,20 +1023,24 @@ def plot_login_success_rate(login_data):
 def filter_business_data(integrated_data, start_date, end_date):
     gregorian_start_date = convert_jalali_to_gregorian(start_date)
     gregorian_end_date = convert_jalali_to_gregorian(end_date)
-    return integrated_data[(integrated_data['paid_date_day'] >= gregorian_start_date) & (
-            integrated_data['paid_date_day'] <= gregorian_end_date)]
+    integrated_data['paid_date_day'] = integrated_data['paid_date_day'].astype(str).str[:19]
+    integrated_data['paid_date_day'] = pd.to_datetime(integrated_data['paid_date_day'], errors='coerce')
+    return integrated_data[
+            (integrated_data['paid_date_day'] >= gregorian_start_date) &
+            (integrated_data['paid_date_day'] <= gregorian_end_date)
+            ]
 
 
 with st.sidebar:
     st.header("")
     start_date = st.text_input("Start Date (YYYY/MM/DD):", "1403/01/01")
     end_date = st.text_input("End Date (YYYY/MM/DD):", "1403/12/29")
-    # ins_type = st.selectbox("Select Insurance Type:", ["Thirdparty", "Carbody"], key='ins_type_key')
     ins_type = 'Thirdparty'
     aggregation_level = st.selectbox("Select Aggregation Level:", ["Monthly", "Seasonally"],
                                      key='agg_key')
 
-overall_integrated_data['paid_date_day'] = pd.to_datetime(overall_integrated_data['paid_date_day'])
+overall_integrated_data = fetch_metabase_data()
+# overall_integrated_data['paid_date_day'] = pd.to_datetime(overall_integrated_data['paid_date_day'])
 final_business_data = filter_business_data(overall_integrated_data, start_date, end_date)
 
 try:
@@ -1140,9 +1144,8 @@ with col8:
     st.markdown("<h4 style='text-align: center;'>Carbody SLA Met Share</h4>", unsafe_allow_html=True)
     plot_carbody_sla(final_business_data)
 
-st.markdown("<h4 style='text-align: center;'>Share of Issuance Time Range</h4>", unsafe_allow_html=True)
-stacked_visualize_reasons_business(final_business_data, ins_type)
-
+# st.markdown("<h4 style='text-align: center;'>Share of Issuance Time Range</h4>", unsafe_allow_html=True)
+# stacked_visualize_reasons_business(final_business_data, ins_type)
 
 st.markdown("<h3 style='text-align: center;'>CallCenter</h3>", unsafe_allow_html=True)
 col20, col21 = st.columns(2)
@@ -1195,7 +1198,6 @@ with col25:
         plot_nps_vs_reason_group_heatmap_grouped_level2(thirdparty_df, reason_group_display="Payment Problems")
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Payment Problems")
-
 
 st.write("")
 st.markdown("<h3 style='text-align: center;'>Call Center</h3>", unsafe_allow_html=True)
