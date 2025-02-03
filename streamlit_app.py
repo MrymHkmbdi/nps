@@ -9,6 +9,7 @@ import arabic_reshaper
 from bidi.algorithm import get_display
 from matplotlib.colors import LinearSegmentedColormap
 from persiantools.jdatetime import JalaliDate
+from read_gsheet import fetch_gsheet_data
 
 import warnings
 
@@ -570,7 +571,6 @@ def stacked_visualize_reasons_main(res_df, insurance_type, n):
     ax1.set_xlabel(' ')
     ax1.set_ylabel('Percentage')
     ax1.set_title(' ')
-    # ax1.legend(reshaped_columns, prop=persian_font, edgecolor='none', loc="best")
     ax1.legend(
         reshaped_columns,
         prop=persian_font,
@@ -1041,21 +1041,13 @@ final_business_data = filter_business_data(overall_integrated_data, start_date, 
 
 try:
     nps_file = pd.read_csv('data/output.csv')
-    thirdparty_nps_file = pd.read_csv('data/output_thirdparty.csv')
+    thirdparty_nps_file = fetch_gsheet_data()
     carbody_nps_file = pd.read_csv('data/output_carbody.csv')
-
-    # df = create_pivot_table(nps_file, start_date, end_date, ins_type)
-    # df['سایر'] = 0
-    # df['سایر دلایل'] = 0
 
     thirdparty_df = create_pivot_table(thirdparty_nps_file, start_date, end_date, 'thirdparty')
     thirdparty_df['سایر'] = 0
     thirdparty_df['سایر دلایل'] = 0
     thirdparty_df.to_csv('test.csv', index=False)
-    # st.dataframe(thirdparty_df)
-    # carbody_df = create_pivot_table(carbody_nps_file, start_date, end_date, 'carbody')
-    # carbody_df['سایر'] = 0
-    # carbody_df['سایر دلایل'] = 0
 
 
 except Exception as e:
@@ -1140,6 +1132,18 @@ with col16:
         plot_nps_vs_reason_group_heatmap_grouped_level2(thirdparty_df, reason_group_display="Issuance Problems")
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Issuance Problems")
+col7, col8 = st.columns(2)
+with col7:
+    st.markdown("<h4 style='text-align: center;'>Thirdparty SLA Met Shares</h4>", unsafe_allow_html=True)
+    plot_thirdparty_sla(final_business_data)
+with col8:
+    st.markdown("<h4 style='text-align: center;'>Carbody SLA Met Share</h4>", unsafe_allow_html=True)
+    plot_carbody_sla(final_business_data)
+
+st.markdown("<h4 style='text-align: center;'>Share of Issuance Time Range</h4>", unsafe_allow_html=True)
+stacked_visualize_reasons_business(final_business_data, ins_type)
+
+
 st.markdown("<h3 style='text-align: center;'>CallCenter</h3>", unsafe_allow_html=True)
 col20, col21 = st.columns(2)
 with col20:
@@ -1192,16 +1196,6 @@ with col25:
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Payment Problems")
 
-col7, col8 = st.columns(2)
-with col7:
-    st.markdown("<h4 style='text-align: center;'>Thirdparty SLA Met Shares</h4>", unsafe_allow_html=True)
-    plot_thirdparty_sla(final_business_data)
-with col8:
-    st.markdown("<h4 style='text-align: center;'>Carbody SLA Met Share</h4>", unsafe_allow_html=True)
-    plot_carbody_sla(final_business_data)
-
-st.markdown("<h4 style='text-align: center;'>Share of Issuance Time Range</h4>", unsafe_allow_html=True)
-stacked_visualize_reasons_business(final_business_data, ins_type)
 
 st.write("")
 st.markdown("<h3 style='text-align: center;'>Call Center</h3>", unsafe_allow_html=True)
