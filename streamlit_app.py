@@ -11,6 +11,9 @@ from matplotlib.colors import LinearSegmentedColormap
 from persiantools.jdatetime import JalaliDate
 from read_gsheet import fetch_gsheet_data
 from fetch_metabase_data import fetch_metabase_data
+from fetch_login_data import fetch_login_data
+from pandas.api.types import CategoricalDtype
+
 
 import warnings
 
@@ -22,6 +25,21 @@ st.set_page_config(
     layout='wide',
     initial_sidebar_state='expanded'
 )
+
+persian_month_order = [
+    "فروردین", "اردیبهشت", "خرداد",
+    "تیر", "مرداد", "شهریور",
+    "مهر", "آبان", "آذر",
+    "دی", "بهمن", "اسفند"
+]
+
+jalali_periods_dict = {
+    "فروردین": 1, "اردیبهشت": 2, "خرداد": 3, "تیر": 4,
+    "مرداد": 5, "شهریور": 6, "مهر": 7, "آبان": 8,
+    "آذر": 9, "دی": 10, "بهمن": 11, "اسفند": 12,
+    "بهار": 13, "تابستان": 14, "پائیز": 15, "زمستان": 16,
+}
+
 
 final_reasons_dict_list = {
     'thirdparty_main_suggesting_reason': ['سهولت خرید بیمه\u200cنامه', 'قیمت پایین\u200cتر بیمه\u200cنامه',
@@ -294,22 +312,66 @@ def convert_gregorian_to_jalali(gregorian_date):
 
 def get_jalali_period(res_df):
     res_df['gregorian_start_date'] = pd.to_datetime(res_df['gregorian_start_date'])
-    periods = []
+    date_periods = []
 
     for date in res_df['gregorian_start_date']:
         jalali_date = JalaliDate.to_jalali(date)
         if aggregation_level == "Weekly":
             start_of_week = jalali_date - pd.Timedelta(days=jalali_date.weekday() + 1)
-            periods.append(start_of_week)
+            date_periods.append(start_of_week)
         elif aggregation_level == "Monthly":
             start_of_month = JalaliDate(jalali_date.year, jalali_date.month, 1)
-            periods.append(start_of_month)
+            date_periods.append(start_of_month)
         elif aggregation_level == "Seasonally":
             start_month = 1 + 3 * ((jalali_date.month - 1) // 3)
             start_of_quarter = JalaliDate(jalali_date.year, start_month, 1)
-            periods.append(start_of_quarter)
+            date_periods.append(start_of_quarter)
 
-    res_df['jalali_period'] = periods
+    res_df['jalali_date_period'] = date_periods
+    res_df['jalali_date_period'] = res_df['jalali_date_period'].astype(str)
+    # res_df['year'] = res_df['jalali_date_period'].str[:4]
+    # persian_digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+    #
+    # res_df['year'] = res_df['year'].apply(lambda x: x.translate(persian_digits))
+
+    month_conditions = [
+        res_df['jalali_date_period'].str.contains("-01-01", na=False),
+        res_df['jalali_date_period'].str.contains("-02-01", na=False),
+        res_df['jalali_date_period'].str.contains("-03-01", na=False),
+        res_df['jalali_date_period'].str.contains("-04-01", na=False),
+        res_df['jalali_date_period'].str.contains("-05-01", na=False),
+        res_df['jalali_date_period'].str.contains("-06-01", na=False),
+        res_df['jalali_date_period'].str.contains("-07-01", na=False),
+        res_df['jalali_date_period'].str.contains("-08-01", na=False),
+        res_df['jalali_date_period'].str.contains("-09-01", na=False),
+        res_df['jalali_date_period'].str.contains("-10-01", na=False),
+        res_df['jalali_date_period'].str.contains("-11-01", na=False),
+        res_df['jalali_date_period'].str.contains("-12-01", na=False)
+    ]
+
+    month_names = ['فروردین', 'اردیبهشت', 'خرداد',
+                   'تیر', 'مرداد', 'شهریور',
+                   'مهر', 'آبان', 'آذر',
+                   'دی', 'بهمن', 'اسفند']
+    # res_df['months'] = np.select(month_conditions, years + " " + np.array(month_names), default='Unknown')
+
+    season_conditions = [
+        res_df['jalali_date_period'].str.contains("-01-01| -02-01| -03-01", na=False),
+        res_df['jalali_date_period'].str.contains("-04-01| -05-01| -06-01", na=False),
+        res_df['jalali_date_period'].str.contains("-07-01| -08-01| -09-01", na=False),
+        res_df['jalali_date_period'].str.contains("-10-01| -11-01| -12-01", na=False)
+    ]
+
+    season_names = ['بهار', 'تابستان', 'پائیز', 'زمستان']
+    # res_df['season'] = np.select(season_conditions, years + " " + np.array(season_names), default='Unknown')
+
+    if aggregation_level == 'Seasonally':
+        res_df['jalali_period'] = np.select(season_conditions, season_names, default='Unknown')
+        # res_df['jalali_period'] = res_df['year'] + " " + res_df['jalali_period']
+    else:
+        res_df['jalali_period'] = np.select(month_conditions, month_names, default='Unknown')
+        # res_df['jalali_period'] = res_df['year'] + " " + res_df['jalali_period']
+
     return res_df
 
 
@@ -363,6 +425,7 @@ def plot_nps_vs_reason_group_heatmap_grouped_level1(res_df, insurance_type):
         reason_cols = res_df2.drop('score', axis=1).columns
 
     reshaped_columns = [get_display(arabic_reshaper.reshape(col)) for col in reason_cols]
+
     heatmap_data = res_df2[reason_cols].sum().transpose()
 
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -491,7 +554,11 @@ def score_trend(res_df):
 
     score_counts = res_df.groupby(['jalali_period', 'nps_group']).size().unstack().fillna(0)
     score_percentages = score_counts.div(score_counts.sum(axis=1), axis=0) * 100
+    jalali_periods = list(set(res_df['jalali_period']))
+    persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
 
+    sorted_jalali_periods = sorted(jalali_periods, key=lambda period: jalali_periods_dict.get(period))
+    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in sorted_jalali_periods]
     total_counts = score_counts.sum(axis=1)
 
     fig, ax1 = plt.subplots(figsize=(12, 6))
@@ -518,6 +585,9 @@ def score_trend(res_df):
     ax1.yaxis.set_ticks_position('left')
     ax2.xaxis.set_ticks_position('bottom')
     ax2.yaxis.set_ticks_position('right')
+
+    ax1.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
+    ax2.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
 
     ax1.legend(loc='upper left', frameon=False, edgecolor='none')
     # ax2.legend(title='Total Count', loc='upper right', frameon=False, edgecolor='none')
@@ -554,14 +624,14 @@ def stacked_visualize_reasons_main(res_df, insurance_type, n):
             count_ones[c] = res_df[c].sum()
     sorted_counts = dict(sorted(count_ones.items(), key=lambda item: item[1], reverse=True))
     top_columns = list(sorted_counts.keys())[:n]
-
     weekly_data = res_df.groupby('jalali_period')[top_columns].sum()
-
+    jalali_periods = list(set(res_df['jalali_period']))
     weekly_data_percent = weekly_data.div(weekly_data.sum(axis=1), axis=0) * 100
 
     weekly_sum = weekly_data[top_columns].sum(axis=1)
 
     reshaped_columns = [get_display(arabic_reshaper.reshape(col)) for col in top_columns]
+    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in jalali_periods]
 
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
@@ -595,6 +665,8 @@ def stacked_visualize_reasons_main(res_df, insurance_type, n):
     ax1.xaxis.set_ticks_position('bottom')
     ax1.yaxis.set_ticks_position('left')
     ax2.yaxis.set_ticks_position('right')
+    ax1.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
+    ax2.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
     plt.tight_layout()
     st.pyplot(fig)
 
@@ -622,7 +694,7 @@ def stacked_visualize_reasons_level2(res_df, n, reason_group_display):
     top_columns = list(sorted_counts.keys())[:n]
 
     weekly_data = res_df.groupby('jalali_period')[top_columns].sum()
-
+    jalali_periods = list(set(res_df['jalali_period']))
     weekly_data = weekly_data.groupby('jalali_period')[top_columns].sum()
 
     weekly_data_percent = weekly_data.div(weekly_data.sum(axis=1), axis=0) * 100
@@ -630,7 +702,7 @@ def stacked_visualize_reasons_level2(res_df, n, reason_group_display):
     weekly_sum = weekly_data[top_columns].sum(axis=1)
 
     reshaped_columns = [get_display(arabic_reshaper.reshape(col)) for col in top_columns]
-
+    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in jalali_periods]
     fig, ax1 = plt.subplots(figsize=(16, 11))
 
     dodgerblue_cmap = LinearSegmentedColormap.from_list("Red", ["lightsalmon", "Red"])
@@ -666,6 +738,8 @@ def stacked_visualize_reasons_level2(res_df, n, reason_group_display):
     ax1.xaxis.set_ticks_position('bottom')
     ax1.yaxis.set_ticks_position('left')
     ax2.yaxis.set_ticks_position('right')
+    ax1.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
+    ax2.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
     plt.tight_layout()
     st.pyplot(fig)
 
@@ -719,22 +793,65 @@ def bars_visualize_reasons_grouped(res_df, n):
 
 def get_jalali_period_business(integrated_data):
     integrated_data['paid_date_day'] = pd.to_datetime(integrated_data['paid_date_day'])
-    periods = []
+    date_periods = []
 
     for date in integrated_data['paid_date_day']:
         jalali_date = JalaliDate.to_jalali(date)
         if aggregation_level == "Weekly":
             start_of_week = jalali_date - pd.Timedelta(days=jalali_date.weekday() + 1)
-            periods.append(start_of_week)
+            date_periods.append(start_of_week)
         elif aggregation_level == "Monthly":
             start_of_month = JalaliDate(jalali_date.year, jalali_date.month, 1)
-            periods.append(start_of_month)
+            date_periods.append(start_of_month)
         elif aggregation_level == "Seasonally":
             start_month = 1 + 3 * ((jalali_date.month - 1) // 3)
             start_of_quarter = JalaliDate(jalali_date.year, start_month, 1)
-            periods.append(start_of_quarter)
+            date_periods.append(start_of_quarter)
 
-    integrated_data['jalali_period'] = periods
+    integrated_data['jalali_date_period'] = date_periods
+    integrated_data['jalali_date_period'] = integrated_data['jalali_date_period'].astype(str)
+    # res_df['year'] = res_df['jalali_date_period'].str[:4]
+    # persian_digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+    #
+    # res_df['year'] = res_df['year'].apply(lambda x: x.translate(persian_digits))
+
+    month_conditions = [
+        integrated_data['jalali_date_period'].str.contains("-01-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-02-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-03-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-04-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-05-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-06-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-07-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-08-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-09-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-10-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-11-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-12-01", na=False)
+    ]
+
+    month_names = ['فروردین', 'اردیبهشت', 'خرداد',
+                   'تیر', 'مرداد', 'شهریور',
+                   'مهر', 'آبان', 'آذر',
+                   'دی', 'بهمن', 'اسفند']
+    # res_df['months'] = np.select(month_conditions, years + " " + np.array(month_names), default='Unknown')
+
+    season_conditions = [
+        integrated_data['jalali_date_period'].str.contains("-01-01| -02-01| -03-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-04-01| -05-01| -06-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-07-01| -08-01| -09-01", na=False),
+        integrated_data['jalali_date_period'].str.contains("-10-01| -11-01| -12-01", na=False)
+    ]
+
+    season_names = ['بهار', 'تابستان', 'پائیز', 'زمستان']
+    # res_df['season'] = np.select(season_conditions, years + " " + np.array(season_names), default='Unknown')
+
+    if aggregation_level == 'Seasonally':
+        integrated_data['jalali_period'] = np.select(season_conditions, season_names, default='Unknown')
+        # res_df['jalali_period'] = res_df['year'] + " " + res_df['jalali_period']
+    else:
+        integrated_data['jalali_period'] = np.select(month_conditions, month_names, default='Unknown')
+        # res_df['jalali_period'] = res_df['year'] + " " + res_df['jalali_period']
     return integrated_data
 
 
@@ -749,14 +866,16 @@ def plot_thirdparty_sla(integrated_data):
             aggregated_data['bb_redline_sla_counts'] /
             aggregated_data['thirdparty_bb_order_count'] * 100
     )
-
-    aggregated_data['jalali_period_str'] = aggregated_data['jalali_period'].apply(
-        lambda x: f"{x.year}-{x.month:02d}-{x.day:02d}"
-    )
-
+    # st.dataframe(aggregated_data['jalali_period'])
+    # aggregated_data['jalali_period_str'] = aggregated_data['jalali_period'].apply(
+    #     lambda x: f"{x.year}-{x.month:02d}-{x.day:02d}"
+    # )
+    jalali_periods = list(set(aggregated_data['jalali_period']))
+    persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
+    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in jalali_periods]
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(
-        aggregated_data['jalali_period_str'],
+        aggregated_data['jalali_period'],
         aggregated_data['percentage'],
         marker='o', label='Percentage', linewidth=4, color='MediumSeaGreen'
     )
@@ -764,7 +883,7 @@ def plot_thirdparty_sla(integrated_data):
     for i, row in aggregated_data.iterrows():
         ax.annotate(
             f"{row['percentage']:.1f}%",
-            (row['jalali_period_str'], row['percentage']),
+            (row['jalali_period'], row['percentage']),
             textcoords="offset points", xytext=(0, 10),
             ha='center', fontsize=10, color='MediumSeaGreen'
         )
@@ -776,56 +895,56 @@ def plot_thirdparty_sla(integrated_data):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
+    ax.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
 
     plt.tight_layout()
     st.pyplot(fig)
 
 
-def plot_carbody_sla(integrated_data):
-    integrated_data = get_jalali_period_business(integrated_data)
-    aggregated_data = integrated_data.groupby('jalali_period').agg({
-        'carbody_48hours': 'sum',
-        'total_carbody_count': 'sum'
-    }).reset_index()
-
-    aggregated_data['percentage'] = (
-            aggregated_data['carbody_48hours'] /
-            aggregated_data['total_carbody_count'] * 100
-    )
-
-    aggregated_data['jalali_period_str'] = aggregated_data['jalali_period'].apply(
-        lambda x: f"{x.year}-{x.month:02d}-{x.day:02d}"
-    )
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(
-        aggregated_data['jalali_period_str'],
-        aggregated_data['percentage'],
-        marker='o', label='Percentage', linewidth=4, color='MediumSeaGreen'
-    )
-
-    for i, row in aggregated_data.iterrows():
-        ax.annotate(
-            f"{row['percentage']:.1f}%",
-            (row['jalali_period_str'], row['percentage']),
-            textcoords="offset points", xytext=(0, 10),
-            ha='center', fontsize=10, color='MediumSeaGreen'
-        )
-
-    ax.set_title('')
-    ax.set_xlabel(' ')
-    ax.set_ylabel('Percentage')
-    ax.grid(False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-
-    plt.tight_layout()
-    st.pyplot(fig)
+# def plot_carbody_sla(integrated_data):
+#     integrated_data = get_jalali_period_business(integrated_data)
+#     aggregated_data = integrated_data.groupby('jalali_period').agg({
+#         'carbody_48hours': 'sum',
+#         'total_carbody_count': 'sum'
+#     }).reset_index()
+#
+#     aggregated_data['percentage'] = (
+#             aggregated_data['carbody_48hours'] /
+#             aggregated_data['total_carbody_count'] * 100
+#     )
+#
+#     aggregated_data['jalali_period_str'] = aggregated_data['jalali_period'].apply(
+#         lambda x: f"{x.year}-{x.month:02d}-{x.day:02d}"
+#     )
+#
+#     fig, ax = plt.subplots(figsize=(12, 6))
+#     ax.plot(
+#         aggregated_data['jalali_period_str'],
+#         aggregated_data['percentage'],
+#         marker='o', label='Percentage', linewidth=4, color='MediumSeaGreen'
+#     )
+#
+#     for i, row in aggregated_data.iterrows():
+#         ax.annotate(
+#             f"{row['percentage']:.1f}%",
+#             (row['jalali_period_str'], row['percentage']),
+#             textcoords="offset points", xytext=(0, 10),
+#             ha='center', fontsize=10, color='MediumSeaGreen'
+#         )
+#
+#     ax.set_title('')
+#     ax.set_xlabel(' ')
+#     ax.set_ylabel('Percentage')
+#     ax.grid(False)
+#     ax.spines['top'].set_visible(False)
+#     ax.spines['right'].set_visible(False)
+#     ax.spines['left'].set_visible(False)
+#
+#     plt.tight_layout()
+#     st.pyplot(fig)
 
 
 def plot_cancelled_orders(integrated_data):
-    # Define the aggregation level
     if aggregation_level == "Weekly":
         integrated_data['period'] = integrated_data['paid_date_day'].dt.to_period('W').dt.start_time
     elif aggregation_level == "Monthly":
@@ -1136,13 +1255,13 @@ with col16:
         plot_nps_vs_reason_group_heatmap_grouped_level2(thirdparty_df, reason_group_display="Issuance Problems")
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Issuance Problems")
-col7, col8 = st.columns(2)
-with col7:
-    st.markdown("<h4 style='text-align: center;'>Thirdparty SLA Met Shares</h4>", unsafe_allow_html=True)
-    plot_thirdparty_sla(final_business_data)
-with col8:
-    st.markdown("<h4 style='text-align: center;'>Carbody SLA Met Share</h4>", unsafe_allow_html=True)
-    plot_carbody_sla(final_business_data)
+# col7, col8 = st.columns(2)
+# with col7:
+st.markdown("<h4 style='text-align: center;'>Thirdparty SLA Met Shares</h4>", unsafe_allow_html=True)
+plot_thirdparty_sla(final_business_data)
+# with col8:
+#     st.markdown("<h4 style='text-align: center;'>Carbody SLA Met Share</h4>", unsafe_allow_html=True)
+#     plot_carbody_sla(final_business_data)
 
 # st.markdown("<h4 style='text-align: center;'>Share of Issuance Time Range</h4>", unsafe_allow_html=True)
 # stacked_visualize_reasons_business(final_business_data, ins_type)
@@ -1181,6 +1300,10 @@ with col23:
         plot_nps_vs_reason_group_heatmap_grouped_level2(thirdparty_df, reason_group_display="Website Problems")
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Website Problems")
+login_data = fetch_login_data()
+st.markdown("<h4 style='text-align: center;'>Login Success Rate</h4>", unsafe_allow_html=True)
+plot_login_success_rate(login_data)
+
 st.markdown("<h3 style='text-align: center;'>Payment</h3>", unsafe_allow_html=True)
 col24, col25 = st.columns(2)
 with col24:
@@ -1199,22 +1322,22 @@ with col25:
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Payment Problems")
 
-st.write("")
-st.markdown("<h3 style='text-align: center;'>Call Center</h3>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center;'>AVG Call Waiting Time"
-            "Time</h4>", unsafe_allow_html=True)
-empty_chart()
-col11, col12 = st.columns(2)
-with col11:
-    st.markdown("<h4 style='text-align: center;'>FCR Time</h4>", unsafe_allow_html=True)
-    empty_chart()
-with col12:
-    st.markdown("<h4 style='text-align: center;'>Call Quality Score"
-                "Time</h4>", unsafe_allow_html=True)
-    empty_chart()
+# st.write("")
+# st.markdown("<h3 style='text-align: center;'>Call Center</h3>", unsafe_allow_html=True)
+# st.markdown("<h4 style='text-align: center;'>AVG Call Waiting Time"
+#             "Time</h4>", unsafe_allow_html=True)
+# empty_chart()
+# col11, col12 = st.columns(2)
+# with col11:
+#     st.markdown("<h4 style='text-align: center;'>FCR Time</h4>", unsafe_allow_html=True)
+#     empty_chart()
+# with col12:
+#     st.markdown("<h4 style='text-align: center;'>Call Quality Score"
+#                 "Time</h4>", unsafe_allow_html=True)
+#     empty_chart()
 
-st.write("")
-st.markdown("<h3 style='text-align: center;'>Website</h3>", unsafe_allow_html=True)
-login_data = pd.read_csv('login_data.csv')
-st.markdown("<h4 style='text-align: center;'>Login Success Rate</h4>", unsafe_allow_html=True)
-plot_login_success_rate(login_data)
+# st.write("")
+# st.markdown("<h3 style='text-align: center;'>Website</h3>", unsafe_allow_html=True)
+# login_data = fetch_login_data()
+# st.markdown("<h4 style='text-align: center;'>Login Success Rate</h4>", unsafe_allow_html=True)
+# plot_login_success_rate(login_data)
