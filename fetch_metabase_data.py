@@ -244,6 +244,7 @@ sql_query = """
     ) c ON o.id = c.order_id
     WHERE 
         o.first_paid_date IS NOT NULL 
+        AND o.first_paid_date > '2024-03-20'
         AND o.state_id NOT IN (1, 2, 3, 5, 38)
         AND o.id NOT IN (
             SELECT DISTINCT order_id
@@ -312,10 +313,11 @@ ORDER BY
 """
 
 
-def fetch_metabase_data():
+def fetch_metabase_data(username, password):
+
     response = requests.post(
         "https://bijik.bimebazar.com/api/session",
-        json={"username": "m.hokmabadi@bimebazar.com", "password": "CEme12031399"}
+        json={"username": username, "password": password}
     )
     if response.status_code != 200:
         raise Exception(f"Failed to log in to Metabase: {response.text}")

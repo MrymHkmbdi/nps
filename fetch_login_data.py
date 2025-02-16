@@ -13,6 +13,8 @@ WITH T AS (
         users_otploginlog
     WHERE 
         (SOURCE IS NULL OR SOURCE NOT LIKE '%partner%')
+        AND created_date::DATE > '2024-03-20'
+        AND created_date IS NOT NULL
     GROUP BY 
         created_date::DATE, username
 )
@@ -29,10 +31,10 @@ ORDER BY
 """
 
 
-def fetch_login_data():
+def fetch_login_data(username, password):
     response = requests.post(
         "https://bijik.bimebazar.com/api/session",
-        json={"username": "m.hokmabadi@bimebazar.com", "password": "CEme12031399"}
+        json={"username": username, "password": password}
     )
     if response.status_code != 200:
         raise Exception(f"Failed to log in to Metabase: {response.text}")

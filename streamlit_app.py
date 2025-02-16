@@ -14,7 +14,6 @@ from fetch_metabase_data import fetch_metabase_data
 from fetch_login_data import fetch_login_data
 from pandas.api.types import CategoricalDtype
 
-
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -39,7 +38,6 @@ jalali_periods_dict = {
     "آذر": 9, "دی": 10, "بهمن": 11, "اسفند": 12,
     "بهار": 13, "تابستان": 14, "پائیز": 15, "زمستان": 16,
 }
-
 
 final_reasons_dict_list = {
     'thirdparty_main_suggesting_reason': ['سهولت خرید بیمه\u200cنامه', 'قیمت پایین\u200cتر بیمه\u200cنامه',
@@ -142,6 +140,7 @@ reasons_display_dict = {
     'Website Problems': 'main_website_ordering_problem',
     'Payment Problems': 'main_payment_problem',
 }
+
 
 # overall_integrated_data = pd.read_csv('integrated_data.csv')
 
@@ -557,9 +556,17 @@ def score_trend(res_df):
     jalali_periods = list(set(res_df['jalali_period']))
     persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
 
+    # sorted_jalali_periods = sorted(jalali_periods, key=lambda period: jalali_periods_dict.get(period))
+    # reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in sorted_jalali_periods]
+
+    total_counts = score_counts.sum(axis=1)
+
+    jalali_periods = list(set(res_df['jalali_period']))
     sorted_jalali_periods = sorted(jalali_periods, key=lambda period: jalali_periods_dict.get(period))
     reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in sorted_jalali_periods]
-    total_counts = score_counts.sum(axis=1)
+    score_percentages = score_percentages.loc[sorted_jalali_periods]
+    total_counts = total_counts.loc[sorted_jalali_periods]
+    persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
 
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
@@ -586,6 +593,7 @@ def score_trend(res_df):
     ax2.xaxis.set_ticks_position('bottom')
     ax2.yaxis.set_ticks_position('right')
 
+    ax1.set_xticks(range(len(reshaped_xlabels)))
     ax1.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
     ax2.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
 
@@ -600,115 +608,109 @@ def score_trend(res_df):
 
 def stacked_visualize_reasons_main(res_df, insurance_type, n):
     if insurance_type == 'Thirdparty':
-        reason_group_display = 'Promoting Reasons'
-        reason_group = reasons_display_dict[reason_group_display]
+        df_reference = thirdparty_df
+        reasons_dict = thirdparty_final_reasons_dict_list
+    elif insurance_type == 'Carbody':
+        df_reference = carbody_df
+        reasons_dict = carbody_final_reasons_dict_list
+    else:
+        raise ValueError("Invalid insurance type. Choose 'Thirdparty' or 'Carbody'.")
 
-        valid_columns = [col for col in thirdparty_final_reasons_dict_list[reason_group] if
-                         col in thirdparty_df.columns]
+    reason_group_display = 'Promoting Reasons'
+    reason_group = reasons_display_dict[reason_group_display]
+    valid_columns = [col for col in reasons_dict[reason_group] if col in df_reference.columns]
 
-    if insurance_type == 'Carbody':
-        reason_group_display = 'Promoting Reasons'
-        reason_group = reasons_display_dict[reason_group_display]
-        valid_columns = [col for col in carbody_final_reasons_dict_list[reason_group] if col in carbody_df.columns]
-
-    res_df['gregorian_start_date'] = res_df['start_date'].apply(convert_jalali_to_gregorian)
-    res_df['gregorian_start_date'] = pd.to_datetime(res_df['gregorian_start_date'])
+    res_df['gregorian_start_date'] = pd.to_datetime(res_df['start_date'].apply(convert_jalali_to_gregorian))
     res_df = get_jalali_period(res_df)
-    persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
-    valid_columns = valid_columns + ['start_date'] + ['jalali_period']
-    res_df = res_df[valid_columns]
-    count_ones = {}
-    for c in res_df.columns:
-        if c not in ['tracking_code', 'start_date', 'score',
-                     'period', 'gregorian_start_date', 'jalali_period']:
-            count_ones[c] = res_df[c].sum()
+
+    res_df = res_df[valid_columns + ['jalali_period']]
+
+    count_ones = {col: res_df[col].sum() for col in valid_columns}
     sorted_counts = dict(sorted(count_ones.items(), key=lambda item: item[1], reverse=True))
+
     top_columns = list(sorted_counts.keys())[:n]
+
     weekly_data = res_df.groupby('jalali_period')[top_columns].sum()
-    jalali_periods = list(set(res_df['jalali_period']))
+
+    sorted_jalali_periods = sorted(set(res_df['jalali_period']), key=lambda period: jalali_periods_dict.get(period))
+    weekly_data = weekly_data.loc[sorted_jalali_periods]
+
     weekly_data_percent = weekly_data.div(weekly_data.sum(axis=1), axis=0) * 100
 
-    weekly_sum = weekly_data[top_columns].sum(axis=1)
+    weekly_sum = weekly_data.sum(axis=1)
 
+    persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
     reshaped_columns = [get_display(arabic_reshaper.reshape(col)) for col in top_columns]
-    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in jalali_periods]
+    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in sorted_jalali_periods]
 
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
-    weekly_data_percent.plot(kind='bar', stacked=True, ax=ax1,
-                             cmap="YlGn",
-                             edgecolor='none')
-    ax1.set_xlabel(' ')
+    weekly_data_percent.plot(kind='bar', stacked=True, ax=ax1, cmap="YlGn", edgecolor='none')
+    ax1.set_xlabel('')
     ax1.set_ylabel('Percentage')
-    ax1.set_title(' ')
-    ax1.legend(
-        reshaped_columns,
-        prop=persian_font,
-        edgecolor='none',
-        loc='upper center',
-        bbox_to_anchor=(0.5, 1.15),
-        ncol=len(reshaped_columns),
-        frameon=False
-    )
+    ax1.set_title('')
+
+    ax1.legend(reshaped_columns, prop=persian_font, edgecolor='none', loc='upper center',
+               bbox_to_anchor=(0.5, 1.15), ncol=len(reshaped_columns), frameon=False)
+
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
-    plt.xticks()
 
     ax2 = ax1.twinx()
-    weekly_data.index = weekly_data.index.map(str)
-    ax2.plot(weekly_data.index, weekly_sum, color='black', marker='o',
-             linewidth=4)
+    ax2.plot(sorted_jalali_periods, weekly_sum, color='black', marker='o', linewidth=4)
     ax2.set_ylabel('Total Count')
     ax2.spines['top'].set_visible(False)
-    ax2.legend(loc="upper left", frameon=False)
-    plt.subplots_adjust(right=1.5, bottom=0.2)
-    ax1.xaxis.set_ticks_position('bottom')
-    ax1.yaxis.set_ticks_position('left')
-    ax2.yaxis.set_ticks_position('right')
+
+    ax1.set_xticks(range(len(reshaped_xlabels)))
     ax1.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
     ax2.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
+
+    plt.subplots_adjust(right=1.5, bottom=0.2)
     plt.tight_layout()
     st.pyplot(fig)
 
 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as font_manager
+import streamlit as st
+import arabic_reshaper
+from bidi.algorithm import get_display
+from matplotlib.colors import LinearSegmentedColormap
+
 def stacked_visualize_reasons_level2(res_df, n, reason_group_display):
     reason_group = reasons_display_dict[reason_group_display]
-    if ins_type == 'Thirdparty':
-        valid_columns = [col for col in thirdparty_final_reasons_dict_list[reason_group] if col in res_df.columns]
-    else:
-        valid_columns = [col for col in carbody_final_reasons_dict_list[reason_group] if
-                         col in res_df.columns]
+    valid_columns = (
+        [col for col in thirdparty_final_reasons_dict_list[reason_group] if col in res_df.columns]
+        if ins_type == 'Thirdparty'
+        else [col for col in carbody_final_reasons_dict_list[reason_group] if col in res_df.columns]
+    )
 
-    res_df['gregorian_start_date'] = res_df['start_date'].apply(convert_jalali_to_gregorian)
-    res_df['gregorian_start_date'] = pd.to_datetime(res_df['gregorian_start_date'])
-
+    res_df['gregorian_start_date'] = pd.to_datetime(res_df['start_date'].apply(convert_jalali_to_gregorian))
     res_df = get_jalali_period(res_df)
-    persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
-    valid_columns = valid_columns + ['start_date'] + ['jalali_period']
-    res_df = res_df[valid_columns]
-    count_ones = {}
-    for c in res_df.columns:
-        if c not in ['tracking_code', 'start_date', 'score', 'gregorian_start_date', 'jalali_period']:
-            count_ones[c] = res_df[c].sum()
-    sorted_counts = dict(sorted(count_ones.items(), key=lambda item: item[1], reverse=True))
-    top_columns = list(sorted_counts.keys())[:n]
+
+    res_df = res_df[valid_columns + ['jalali_period']]
+
+    count_ones = {c: res_df[c].sum() for c in valid_columns}
+    top_columns = sorted(count_ones, key=count_ones.get, reverse=True)[:n]
 
     weekly_data = res_df.groupby('jalali_period')[top_columns].sum()
-    jalali_periods = list(set(res_df['jalali_period']))
-    weekly_data = weekly_data.groupby('jalali_period')[top_columns].sum()
+    sorted_jalali_periods = sorted(set(res_df['jalali_period']), key=lambda p: jalali_periods_dict.get(p))
+    weekly_data = weekly_data.reindex(sorted_jalali_periods)
 
     weekly_data_percent = weekly_data.div(weekly_data.sum(axis=1), axis=0) * 100
+    weekly_sum = weekly_data.sum(axis=1)
 
-    weekly_sum = weekly_data[top_columns].sum(axis=1)
-
+    persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
     reshaped_columns = [get_display(arabic_reshaper.reshape(col)) for col in top_columns]
-    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in jalali_periods]
+    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in sorted_jalali_periods]
+
     fig, ax1 = plt.subplots(figsize=(16, 11))
 
-    dodgerblue_cmap = LinearSegmentedColormap.from_list("Red", ["lightsalmon", "Red"])
-    weekly_data_percent.plot(kind='bar', stacked=True, ax=ax1,
-                             cmap=dodgerblue_cmap,
-                             edgecolor='none')
+    cmap = LinearSegmentedColormap.from_list("Red", ["lightsalmon", "Red"])
+    weekly_data_percent.plot(kind='bar', stacked=True, ax=ax1, cmap=cmap, edgecolor='none')
+
     ax1.set_xlabel(' ')
     ax1.set_ylabel('Percentage')
     ax1.set_title(' ')
@@ -723,17 +725,15 @@ def stacked_visualize_reasons_level2(res_df, n, reason_group_display):
     )
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
-    plt.xticks()
 
     ax2 = ax1.twinx()
-    # ax2.plot(weekly_data.index, weekly_sum, color='black', marker='o',
-    #          linewidth=4)
     weekly_data.index = weekly_data.index.map(str)
     ax2.plot(weekly_data.index, weekly_sum, color='black', marker='o', linewidth=4)
 
     ax2.set_ylabel('Total Count')
     ax2.spines['top'].set_visible(False)
     ax2.legend(loc="upper left", frameon=False)
+
     plt.subplots_adjust(right=1.5, bottom=0.2)
     ax1.xaxis.set_ticks_position('bottom')
     ax1.yaxis.set_ticks_position('left')
@@ -742,6 +742,7 @@ def stacked_visualize_reasons_level2(res_df, n, reason_group_display):
     ax2.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
     plt.tight_layout()
     st.pyplot(fig)
+
 
 
 def bars_visualize_reasons_grouped(res_df, n):
@@ -810,10 +811,6 @@ def get_jalali_period_business(integrated_data):
 
     integrated_data['jalali_date_period'] = date_periods
     integrated_data['jalali_date_period'] = integrated_data['jalali_date_period'].astype(str)
-    # res_df['year'] = res_df['jalali_date_period'].str[:4]
-    # persian_digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
-    #
-    # res_df['year'] = res_df['year'].apply(lambda x: x.translate(persian_digits))
 
     month_conditions = [
         integrated_data['jalali_date_period'].str.contains("-01-01", na=False),
@@ -863,21 +860,21 @@ def plot_thirdparty_sla(integrated_data):
     }).reset_index()
 
     aggregated_data['percentage'] = (
-            aggregated_data['bb_redline_sla_counts'] /
-            aggregated_data['thirdparty_bb_order_count'] * 100
+        aggregated_data['bb_redline_sla_counts'] /
+        aggregated_data['thirdparty_bb_order_count'] * 100
     )
-    # st.dataframe(aggregated_data['jalali_period'])
-    # aggregated_data['jalali_period_str'] = aggregated_data['jalali_period'].apply(
-    #     lambda x: f"{x.year}-{x.month:02d}-{x.day:02d}"
-    # )
-    jalali_periods = list(set(aggregated_data['jalali_period']))
+
+    sorted_jalali_periods = sorted(set(aggregated_data['jalali_period']), key=lambda p: jalali_periods_dict.get(p))
+    aggregated_data = aggregated_data.set_index('jalali_period').reindex(sorted_jalali_periods).reset_index()
+
     persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
-    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in jalali_periods]
+    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in sorted_jalali_periods]
+
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(
         aggregated_data['jalali_period'],
         aggregated_data['percentage'],
-        marker='o', label='Percentage', linewidth=4, color='MediumSeaGreen'
+        marker='o', linewidth=4, color='MediumSeaGreen'
     )
 
     for i, row in aggregated_data.iterrows():
@@ -888,60 +885,15 @@ def plot_thirdparty_sla(integrated_data):
             ha='center', fontsize=10, color='MediumSeaGreen'
         )
 
-    ax.set_title('')
     ax.set_xlabel(' ')
     ax.set_ylabel('Percentage')
+    ax.set_yticks([])
     ax.grid(False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_visible(False)
+    ax.spines[['top', 'right', 'left']].set_visible(False)
     ax.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
 
     plt.tight_layout()
     st.pyplot(fig)
-
-
-# def plot_carbody_sla(integrated_data):
-#     integrated_data = get_jalali_period_business(integrated_data)
-#     aggregated_data = integrated_data.groupby('jalali_period').agg({
-#         'carbody_48hours': 'sum',
-#         'total_carbody_count': 'sum'
-#     }).reset_index()
-#
-#     aggregated_data['percentage'] = (
-#             aggregated_data['carbody_48hours'] /
-#             aggregated_data['total_carbody_count'] * 100
-#     )
-#
-#     aggregated_data['jalali_period_str'] = aggregated_data['jalali_period'].apply(
-#         lambda x: f"{x.year}-{x.month:02d}-{x.day:02d}"
-#     )
-#
-#     fig, ax = plt.subplots(figsize=(12, 6))
-#     ax.plot(
-#         aggregated_data['jalali_period_str'],
-#         aggregated_data['percentage'],
-#         marker='o', label='Percentage', linewidth=4, color='MediumSeaGreen'
-#     )
-#
-#     for i, row in aggregated_data.iterrows():
-#         ax.annotate(
-#             f"{row['percentage']:.1f}%",
-#             (row['jalali_period_str'], row['percentage']),
-#             textcoords="offset points", xytext=(0, 10),
-#             ha='center', fontsize=10, color='MediumSeaGreen'
-#         )
-#
-#     ax.set_title('')
-#     ax.set_xlabel(' ')
-#     ax.set_ylabel('Percentage')
-#     ax.grid(False)
-#     ax.spines['top'].set_visible(False)
-#     ax.spines['right'].set_visible(False)
-#     ax.spines['left'].set_visible(False)
-#
-#     plt.tight_layout()
-#     st.pyplot(fig)
 
 
 def plot_cancelled_orders(integrated_data):
@@ -1029,64 +981,6 @@ def plot_cancelled_orders(integrated_data):
     st.pyplot(fig)
 
 
-# def stacked_visualize_reasons_business(integrated_data, insurance_type):
-#     if insurance_type == 'Thirdparty':
-#         time_categories = ['less_than_12_hours_thirdparty', 'less_than_24_hours_thirdparty',
-#                            'less_than_48_hours_thirdparty',
-#                            'less_than_120_hours_thirdparty', 'more_than_120_hours_thirdparty']
-#     else:
-#         time_categories = ['less_than_12_hours_carbody', 'less_than_24_hours_carbody',
-#                            'less_than_48_hours_carbody',
-#                            'less_than_120_hours_carbody', 'more_than_120_hours_carbody']
-#
-#     required_columns = ['jalali_period'] + time_categories
-#     integrated_data = get_jalali_period_business(integrated_data)
-#     integrated_data = integrated_data[required_columns]
-#
-#     weekly_data = integrated_data.groupby('jalali_period')[time_categories].sum()
-#
-#     weekly_data_percent = weekly_data.div(weekly_data.sum(axis=1), axis=0) * 100
-#
-#     # reshaped_columns = [get_display(arabic_reshaper.reshape(col)) for col in time_categories]
-#
-#     fig, ax1 = plt.subplots(figsize=(12, 6))
-#
-#     weekly_data_percent.plot(kind='bar', stacked=True, ax=ax1,
-#                              color=['dodgerblue', 'skyblue', 'honeydew', 'lemonchiffon', 'lightsalmon'],
-#                              edgecolor='none')
-#
-#     ax1.set_xlabel(' ')
-#     ax1.set_ylabel('Percentage')
-#     ax1.set_title(' ')
-#     labels = ['Less Than 12 Hours', 'Less Than 24 Hours', 'Less Than 48 Hours',
-#               'Less Than 120 Hours', 'More Than 120 Hours']
-#     ax1.legend(labels, prop=font_manager.FontProperties(fname='Vazir-Thin.ttf'), edgecolor='none',
-#                loc='upper center',
-#                bbox_to_anchor=(0.5, 1.15), ncol=len(labels), frameon=False)
-#
-#     ax1.spines['top'].set_visible(False)
-#     ax1.spines['right'].set_visible(False)
-#     ax1.grid(False)
-#
-#     ax2 = ax1.twinx()
-#
-#     weekly_sum = weekly_data.sum(axis=1)
-#     weekly_data.index = weekly_data.index.map(str)
-#
-#     ax2.plot(weekly_data.index, weekly_sum, color='black', marker='o', linewidth=4)
-#     ax2.set_ylabel('Total Count')
-#     ax2.spines['top'].set_visible(False)
-#     ax2.legend(loc="upper left", frameon=False)
-#
-#     plt.subplots_adjust(right=1.5, bottom=0.2)
-#     ax1.xaxis.set_ticks_position('bottom')
-#     ax1.yaxis.set_ticks_position('left')
-#     ax2.yaxis.set_ticks_position('right')
-#
-#     plt.tight_layout()
-#     st.pyplot(fig)
-
-
 def plot_login_success_rate(login_data):
     login_data['attempts_week_start'] = pd.to_datetime(login_data['attempts_week_start'])
     login_data['paid_date_day'] = login_data['attempts_week_start'].dt.date
@@ -1107,13 +1001,13 @@ def plot_login_success_rate(login_data):
             aggregated_data['counter'] * 100
     )
 
-    aggregated_data['jalali_period_str'] = aggregated_data['jalali_period'].apply(
-        lambda x: f"{x.year}-{x.month:02d}-{x.day:02d}"
-    )
-
+    jalali_periods = list(set(login_data['jalali_period']))
+    persian_font = font_manager.FontProperties(fname='Vazir-Thin.ttf')
+    sorted_jalali_periods = sorted(jalali_periods, key=lambda period: jalali_periods_dict.get(period))
+    reshaped_xlabels = [get_display(arabic_reshaper.reshape(col)) for col in sorted_jalali_periods]
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(
-        aggregated_data['jalali_period_str'],
+        aggregated_data['jalali_period'],
         aggregated_data['success_rate'],
         marker='o', label='Success Rate', linewidth=4, color='MediumSeaGreen'
     )
@@ -1121,7 +1015,7 @@ def plot_login_success_rate(login_data):
     for i, row in aggregated_data.iterrows():
         ax.annotate(
             f"{row['success_rate']:.1f}%",
-            (row['jalali_period_str'], row['success_rate']),
+            (row['jalali_period'], row['success_rate']),
             textcoords="offset points", xytext=(0, 10),
             ha='center', fontsize=10, color='MediumSeaGreen'
         )
@@ -1134,7 +1028,7 @@ def plot_login_success_rate(login_data):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
-
+    ax.set_xticklabels(reshaped_xlabels, fontproperties=persian_font, rotation=0)
     plt.tight_layout()
     st.pyplot(fig)
 
@@ -1145,20 +1039,24 @@ def filter_business_data(integrated_data, start_date, end_date):
     integrated_data['paid_date_day'] = integrated_data['paid_date_day'].astype(str).str[:19]
     integrated_data['paid_date_day'] = pd.to_datetime(integrated_data['paid_date_day'], errors='coerce')
     return integrated_data[
-            (integrated_data['paid_date_day'] >= gregorian_start_date) &
-            (integrated_data['paid_date_day'] <= gregorian_end_date)
-            ]
+        (integrated_data['paid_date_day'] >= gregorian_start_date) &
+        (integrated_data['paid_date_day'] <= gregorian_end_date)
+        ]
 
 
 with st.sidebar:
     st.header("")
+    username = st.text_input("Metabase Username: ")
+    password = st.text_input("Metabase Password: ")
     start_date = st.text_input("Start Date (YYYY/MM/DD):", "1403/01/01")
     end_date = st.text_input("End Date (YYYY/MM/DD):", "1403/12/29")
     ins_type = 'Thirdparty'
     aggregation_level = st.selectbox("Select Aggregation Level:", ["Monthly", "Seasonally"],
                                      key='agg_key')
-
-overall_integrated_data = fetch_metabase_data()
+if not username or not password:
+    st.warning("Enter your username and password first.")
+    st.stop()
+overall_integrated_data = fetch_metabase_data(username, password)
 # overall_integrated_data['paid_date_day'] = pd.to_datetime(overall_integrated_data['paid_date_day'])
 final_business_data = filter_business_data(overall_integrated_data, start_date, end_date)
 
@@ -1197,7 +1095,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 st.markdown("<h1 style='text-align: center;'>NPS Analysis Dashboard</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center;'>Ordibehesht 1403 untill now</h4>", unsafe_allow_html=True)
+# st.markdown("<h4 style='text-align: center;'>Ordibehesht 1403 untill now</h4>", unsafe_allow_html=True)
 st.markdown("<h4 style='text-align: center;'>NPS Segment Share Trend</h4>", unsafe_allow_html=True)
 if ins_type == 'Thirdparty':
     score = calculate_nps_score(thirdparty_df)
@@ -1233,10 +1131,6 @@ with col14:
     else:
         plot_nps_vs_reason_group_heatmap_all(carbody_df, 'carbody')
 
-# rgd = st.selectbox('', list(['Issuance Problems',
-#                              'CallCenter Problems',
-#                              'Website Problems',
-#                              'Payment Problems']), key='selectbox_1')
 st.write("")
 st.markdown("<h3 style='text-align: center;'>Issuance</h3>", unsafe_allow_html=True)
 col15, col16 = st.columns(2)
@@ -1255,16 +1149,9 @@ with col16:
         plot_nps_vs_reason_group_heatmap_grouped_level2(thirdparty_df, reason_group_display="Issuance Problems")
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Issuance Problems")
-# col7, col8 = st.columns(2)
-# with col7:
+
 st.markdown("<h4 style='text-align: center;'>Thirdparty SLA Met Shares</h4>", unsafe_allow_html=True)
 plot_thirdparty_sla(final_business_data)
-# with col8:
-#     st.markdown("<h4 style='text-align: center;'>Carbody SLA Met Share</h4>", unsafe_allow_html=True)
-#     plot_carbody_sla(final_business_data)
-
-# st.markdown("<h4 style='text-align: center;'>Share of Issuance Time Range</h4>", unsafe_allow_html=True)
-# stacked_visualize_reasons_business(final_business_data, ins_type)
 
 st.markdown("<h3 style='text-align: center;'>CallCenter</h3>", unsafe_allow_html=True)
 col20, col21 = st.columns(2)
@@ -1300,7 +1187,7 @@ with col23:
         plot_nps_vs_reason_group_heatmap_grouped_level2(thirdparty_df, reason_group_display="Website Problems")
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Website Problems")
-login_data = fetch_login_data()
+login_data = fetch_login_data(username, password)
 st.markdown("<h4 style='text-align: center;'>Login Success Rate</h4>", unsafe_allow_html=True)
 plot_login_success_rate(login_data)
 
@@ -1321,23 +1208,3 @@ with col25:
         plot_nps_vs_reason_group_heatmap_grouped_level2(thirdparty_df, reason_group_display="Payment Problems")
     else:
         plot_nps_vs_reason_group_heatmap_grouped_level2(carbody_df, reason_group_display="Payment Problems")
-
-# st.write("")
-# st.markdown("<h3 style='text-align: center;'>Call Center</h3>", unsafe_allow_html=True)
-# st.markdown("<h4 style='text-align: center;'>AVG Call Waiting Time"
-#             "Time</h4>", unsafe_allow_html=True)
-# empty_chart()
-# col11, col12 = st.columns(2)
-# with col11:
-#     st.markdown("<h4 style='text-align: center;'>FCR Time</h4>", unsafe_allow_html=True)
-#     empty_chart()
-# with col12:
-#     st.markdown("<h4 style='text-align: center;'>Call Quality Score"
-#                 "Time</h4>", unsafe_allow_html=True)
-#     empty_chart()
-
-# st.write("")
-# st.markdown("<h3 style='text-align: center;'>Website</h3>", unsafe_allow_html=True)
-# login_data = fetch_login_data()
-# st.markdown("<h4 style='text-align: center;'>Login Success Rate</h4>", unsafe_allow_html=True)
-# plot_login_success_rate(login_data)
