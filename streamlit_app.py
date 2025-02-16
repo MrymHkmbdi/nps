@@ -1047,7 +1047,7 @@ def filter_business_data(integrated_data, start_date, end_date):
 with st.sidebar:
     st.header("")
     username = st.text_input("Metabase Username: ")
-    password = st.text_input("Metabase Password: ")
+    password = st.text_input("Metabase Password: ", type="password")
     start_date = st.text_input("Start Date (YYYY/MM/DD):", "1403/01/01")
     end_date = st.text_input("End Date (YYYY/MM/DD):", "1403/12/29")
     ins_type = 'Thirdparty'
